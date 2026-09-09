@@ -2,32 +2,28 @@
 
 # DeepCoolGo
 
-**Live CPU telemetry on your DeepCool LCD cooler — rendered in Go, driven by pluggable themes.**
+**CPU monitoring on a DeepCool LCD cooler, with customizable themes written in Go.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go&logoColor=white)](go.mod)
+[![Go](https://img.shields.io/badge/Go-1.26.6%2B-00ADD8?logo=go&logoColor=white)](go.mod)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-333?logo=linux&logoColor=white)](#requirements)
-[![Made with libusb](https://img.shields.io/badge/USB-libusb--1.0-6E4C13.svg)](https://libusb.info/)
 
-English &nbsp;•&nbsp; [Русский](README.ru.md)
+English · [Русский](README.ru.md)
 
 </div>
 
----
+DeepCoolGo reads CPU load, temperature, frequency, and power consumption from
+Linux system interfaces and displays them on a compatible DeepCool cooler's
+320 × 240 LCD. It communicates with the display through `libusb` and loads the
+screen layout from a Go plugin (`.so`).
 
-DeepCoolGo reads CPU load, package temperature, clock speed and power draw straight
-from the Linux kernel and paints a 320×240 frame to the LCD on a DeepCool cooler
-over raw USB. Every visual is produced by a **theme** — a Go plugin (`.so`) with a
-single `Screen(data) []FrameObject` function — so you can restyle the display
-without touching the daemon.
-
-## Table of contents
+## Contents
 
 - [Features](#features)
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Configuration](#configuration)
-- [Themes](#themes)
+- [Themes and previews](#themes)
 - [Run as a service](#run-as-a-service)
 - [How it works](#how-it-works)
 - [Development](#development)
@@ -37,217 +33,267 @@ without touching the daemon.
 
 ## Features
 
-- **Zero external daemons.** Talks to the display directly through `libusb`; no
-  vendor software, no root helper service beyond the unit you install.
-- **Pluggable themes.** Five bundled looks, and a documented plugin contract for
-  building your own — see [themes/CREATING_THEMES.md](themes/CREATING_THEMES.md).
-- **Cheap on resources.** One goroutine, a ticker, and a frame is pushed only when
-  a metric actually changes.
-- **Software-rendered.** Anti-aliased shapes, text and gauges composited in pure
-  Go — pixel-identical to a PNG preview you can render on a machine with no display.
-- **One-command install.** `sudo make install` lays down the binary, the theme
-  plugins, a systemd unit and a default config.
+- CPU load (%), temperature (°C), frequency (GHz), and power consumption (W).
+- Five ready-to-use themes and a template for creating your own.
+- Software rendering with text, shapes, gauges, and alpha blending.
+- Configurable sampling interval; frames are sent only when collected data changes.
+- Direct USB communication and installation as a systemd service.
 
 ## Requirements
 
-| | |
+| Component | Requirement |
 |---|---|
-| OS | Linux (uses `/proc`, `hwmon`, `powercap`, `libusb`) |
-| Toolchain | Go **1.26+**, a C compiler, `pkg-config` |
-| Libraries | `libusb-1.0` development headers (pulled in by [`gousb`](https://github.com/google/gousb)) |
-| Hardware | A DeepCool cooler exposing the 320×240 LCD as USB `3633:0026` |
-| Privileges | Raw USB access — run as root, or add a `udev` rule (see [below](#usb-permissions)) |
+| Operating system | Linux; systemd is required for the service installation. |
+| Display | A DeepCool 320 × 240 LCD with USB ID `3633:0026`. |
+| Go | **1.26.6 or later**, as specified in [go.mod](go.mod). |
+| Build tools | Git, Make, a C compiler, and `pkg-config`. The Makefile enables CGO. |
+| Library | `libusb-1.0` and its development headers, required by `gousb`. |
+| Access | Permission to access the USB device and read the metric sources below. The launch examples use `sudo`. |
 
-Install the build dependencies:
+Device detection currently accepts only USB ID `3633:0026` with a compatible
+interface. If several compatible displays are connected, the application uses
+the first one it can open, ordered by USB bus and address.
+
+All of the following metric sources must be available and readable:
+
+| Metric | Source |
+|---|---|
+| CPU load | `/proc/stat` |
+| Temperature | `hwmon`: `k10temp` with the `Tctl` label, or `coretemp` with the `Package id 0` label |
+| Frequency | `/sys/devices/system/cpu/cpu[0-9]*/cpufreq/scaling_cur_freq` |
+| Power consumption | `/sys/class/powercap/intel-rapl:0/energy_uj` |
+
+If any metric cannot be collected, the application logs a warning and skips
+the entire screen update. There is currently no fallback for a missing power
+counter or temperature sensor.
+
+Install the build dependencies for your distribution:
 
 ```sh
-# Fedora / Nobara / RHEL
-sudo dnf install golang gcc pkgconf-pkg-config libusbx-devel
+# Fedora / Nobara
+sudo dnf install git make golang gcc pkgconf-pkg-config libusbx-devel
 
 # Debian / Ubuntu
-sudo apt install golang gcc pkg-config libusb-1.0-0-dev
+sudo apt update
+sudo apt install git make golang gcc pkg-config libusb-1.0-0-dev
 
-# Arch
-sudo pacman -S go gcc pkgconf libusb
+# Arch Linux
+sudo pacman -S --needed git make go gcc pkgconf libusb
 ```
+
+Check `go version` against [go.mod](go.mod): your distribution's Go package may
+be older than the required version.
 
 ## Quick start
 
 ```sh
-git clone <this-repo> deepcoolgo && cd deepcoolgo
+git clone https://github.com/AlexanderBazarov/DeepCoolGo.git
+cd DeepCoolGo
 
-# build the binary + every theme plugin into ./build
-make
-
-# build, then install the bundled themes into ~/.config/DCGO/Themes and
-# write ~/.config/DCGO/config.yml (no root)
+# Build the application and plugins, install themes for the current user,
+# and create a configuration file if one does not exist.
 make dev
 
-# run it (needs USB access — hence sudo)
-sudo ./build/deepcoolgo
+# Use the same configuration directory when running with sudo.
+sudo env XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" ./build/deepcoolgo
 ```
 
-`make dev` gives you a ready-to-run setup from source. Without it, `make` only
-builds into `./build` and the daemon has no themes on its `themes_path` yet — edit
-`config.yml` to point at `build/themes` or run `make dev`. For a real deployment
-use `sudo make install` (see [Run as a service](#run-as-a-service)).
+`make dev` copies plugins to `$XDG_CONFIG_HOME/DCGO/Themes`, using
+`~/.config/DCGO/Themes` when `XDG_CONFIG_HOME` is unset. It creates a configuration
+with the `aether.so` theme and a **5-second** sampling interval. Existing
+configuration files are preserved; check `themes_path` if yours points elsewhere.
+
+The explicit `XDG_CONFIG_HOME` in the launch command keeps the application using
+your configuration when `sudo` changes the user environment. The first screen
+update occurs after one sampling interval. Press `Ctrl+C` to stop.
+
+To build without copying plugins or creating a configuration, run `make`.
+For automatic startup, see [Run as a service](#run-as-a-service).
 
 ## Configuration
 
-The daemon reads `config.yml` from `$XDG_CONFIG_HOME/DCGO/config.yml`. Running
-manually that resolves to `~/.config/DCGO/config.yml`; the installed systemd unit
-points `XDG_CONFIG_HOME` at `/etc/deepcoolgo`, so the service reads
-`/etc/deepcoolgo/DCGO/config.yml`. A default file is written automatically if none
-exists.
+The application loads its configuration once, at startup:
+
+| Launch context | Configuration file |
+|---|---|
+| Current user, `XDG_CONFIG_HOME` unset | `~/.config/DCGO/config.yml` |
+| `XDG_CONFIG_HOME` set | `$XDG_CONFIG_HOME/DCGO/config.yml` |
+| Installed systemd service | `/etc/deepcoolgo/DCGO/config.yml` |
+
+If the file does not exist, the application creates it with default values.
+This does not build or install theme plugins.
+
+Example configuration for a service installed with `make install`:
 
 ```yaml
-# seconds between screen refreshes (must be > 0)
+# Sampling interval in seconds; fractional values such as 0.5 are supported.
 refresh_rate: 30
 
-# theme plugin file name inside themes_path
+# Theme plugin file name within themes_path.
 theme: aether.so
 
-# directory holding the compiled theme plugins (*.so)
+# Absolute path to the directory containing compiled plugins.
 themes_path: /usr/local/lib/deepcoolgo/themes
 ```
 
-| Key | Type | Default | Meaning |
-|---|---|---|---|
-| `refresh_rate` | int (seconds) | `30` | How often metrics are sampled and a frame is (re)built. |
-| `theme` | string | `aether.so` | Plugin file name, resolved against `themes_path`. |
-| `themes_path` | string | `~/.config/DCGO/Themes` | Where `*.so` theme plugins live. `make install` uses `/usr/local/lib/deepcoolgo/themes`. |
+| Key | Default in the application | Description |
+|---|---|---|
+| `refresh_rate` | `30` | Sampling interval in seconds; must be greater than zero. |
+| `theme` | `aether.so` | Plugin file name, resolved relative to `themes_path`. |
+| `themes_path` | `$HOME/.config/DCGO/Themes` | Plugin directory; the default is based on the process user's home directory. |
+
+Use an absolute path for `themes_path`; `~` and environment variables are not
+expanded in YAML values. The default plugin directory does not follow
+`XDG_CONFIG_HOME`, but `make dev` explicitly writes the matching path when it
+creates the configuration.
+
+`make dev` uses a 5-second interval in a new configuration; `make install` and
+the application defaults use 30 seconds. Restart the application or service
+after changing any setting.
 
 ## Themes
 
-A theme turns one `CPUData` sample into a slice of drawing objects for the 320×240
-canvas. Bundled plugins (`make plugins` builds them into `build/themes/`):
+These previews are rendered from the actual theme code at the display's native
+resolution of 320 × 240. They use the same sample readings: **42% CPU load,
+65 W, 56 °C, and 4.2 GHz**. Click an image to open the separate PNG file.
 
-| Plugin | Description |
-|---|---|
-| `aether.so` | Default. Layered panels, anti-aliased gauges, soft gradients. |
-| `lm360.so` | Compact readout inspired by the LM360 stock screen. |
-| `stats.so` | Bar-graph dashboard; `MaxTemp` / `MaxWatts` scale limits set in [plugins/stats/main.go](plugins/stats/main.go). |
-| `quietbeat.so` | Minimal pulse-style layout with embedded artwork. |
-| `twilight-signal.so` | Signal-style layout with embedded artwork. |
-| `custom.so` | Starting point for your own theme — copy the folder and edit. |
+| Aether · `aether.so` | LM360 · `lm360.so` |
+|:---:|:---:|
+| [![Aether theme preview](docs/images/themes/aether.png)](docs/images/themes/aether.png) | [![LM360 theme preview](docs/images/themes/lm360.png)](docs/images/themes/lm360.png) |
+| **Stats · `stats.so`** | **QuietBeat · `quietbeat.so`** |
+| [![Stats theme preview](docs/images/themes/stats.png)](docs/images/themes/stats.png) | [![QuietBeat theme preview](docs/images/themes/quietbeat.png)](docs/images/themes/quietbeat.png) |
+| **Twilight Signal · `twilight-signal.so`** | **Custom template · `custom.so`** |
+| [![Twilight Signal theme preview](docs/images/themes/twilight-signal.png)](docs/images/themes/twilight-signal.png) | [![Custom theme template preview](docs/images/themes/custom.png)](docs/images/themes/custom.png) |
 
-Switch themes by editing `theme:` in the config and restarting the daemon. Go
-plugins **cannot be hot-reloaded**, and the daemon and every plugin must be built
-with the same Go toolchain and matching source for the shared packages — so after
-changing any of `themes/`, `deep_cool/` or `system/`, rebuild everything (`make`).
+Aether is the default theme. LM360 and QuietBeat show power, temperature, and
+frequency, without CPU load. The Stats gauge limits are set in
+[plugins/stats/main.go](plugins/stats/main.go). `custom.so` is a starting point
+for your own theme.
 
-Writing a theme is fully documented in
-**[themes/CREATING_THEMES.md](themes/CREATING_THEMES.md)** — pipeline, drawing
-model, primitive catalogue, testing without hardware, and the plugin
-compatibility rules.
+`make plugins` builds all six plugins into `build/themes/`. To switch themes,
+set `theme` to the plugin file name in `config.yml` and restart the application.
+Plugins are loaded at startup; automatic reloading is not implemented.
+
+Build the application and its plugins with the same Go version, compatible
+build settings, and matching shared packages and dependencies. After changing
+shared code or the toolchain, rebuild everything with `make clean && make`.
+Run `make dev` or `sudo make install` again to update the installed copies.
+
+See the [theme creation guide](themes/CREATING_THEMES.md) for the plugin
+interface, drawing primitives, and examples of testing without a cooler.
 
 ## Run as a service
 
+From the project root, install the application and enable automatic startup:
+
 ```sh
-sudo make install      # binary + plugins + unit + default config
-sudo make enable        # systemctl daemon-reload && systemctl enable --now deepcoolgo
+make
+sudo make install
+sudo make enable
 
 systemctl status deepcoolgo
 journalctl -u deepcoolgo -f
 ```
 
-Install layout (`PREFIX` defaults to `/usr/local`, override it or `DESTDIR` for
-packaging):
+`make install` installs the application, plugins, systemd unit, and an initial
+configuration. `make enable` reloads systemd and starts the service, enabling it
+at boot. The supplied unit runs as root and restarts the process on failure.
 
-| Path | Contents |
+| Default path | Contents |
 |---|---|
-| `/usr/local/bin/deepcoolgo` | the daemon |
-| `/usr/local/lib/deepcoolgo/themes/*.so` | theme plugins |
-| `/usr/lib/systemd/system/deepcoolgo.service` | systemd unit (runs as root, `Restart=on-failure`) |
-| `/etc/deepcoolgo/DCGO/config.yml` | default config — **never overwritten** on reinstall |
+| `/usr/local/bin/deepcoolgo` | Application executable |
+| `/usr/local/lib/deepcoolgo/themes/*.so` | Theme plugins |
+| `/usr/lib/systemd/system/deepcoolgo.service` | systemd unit |
+| `/etc/deepcoolgo/DCGO/config.yml` | Service configuration, preserved on reinstall |
 
-Remove everything except the config with `sudo make uninstall`.
+`PREFIX` defaults to `/usr/local`. The Makefile also supports `DESTDIR` for
+staged installation and individual path overrides; see [Makefile](Makefile).
+
+After changing the service configuration or reinstalling the application:
+
+```sh
+sudo systemctl restart deepcoolgo
+```
+
+To stop and disable the service, run `sudo make disable`. To remove the
+installation while keeping its configuration, run `sudo make uninstall`.
+Use the same path overrides as during installation.
 
 ### USB permissions
 
-The service runs as root because raw USB writes need `CAP_SYS_RAWIO`-level access.
-To run the binary as an unprivileged user instead, add a `udev` rule:
-
-```sh
-echo 'SUBSYSTEM=="usb", ATTR{idVendor}=="3633", ATTR{idProduct}=="0026", MODE="0660", TAG+="uaccess"' \
-  | sudo tee /etc/udev/rules.d/99-deepcoolgo.rules
-sudo udevadm control --reload && sudo udevadm trigger
-```
+The launch examples and supplied service run the application as root to access
+the USB device and metric sources. To run as a regular user, configure USB device
+permissions (for example, through `udev`) and ensure that the same user can read
+the metric sources, including the RAPL energy counter. USB permissions alone
+may not be sufficient.
 
 ## How it works
 
-```
- ┌── Monitor ──────────────┐        ┌── themes (plugin) ──┐      ┌── DeepCool ──┐
- │ /proc/stat      → CPU % │        │ Screen(CPUData)     │      │ Frame.render │
- │ hwmon           → °C    │  ───▶  │   → []FrameObject   │ ──▶  │   RGB565     │ ──▶ USB
- │ scaling_cur_freq→ GHz   │  data  │ (anti-aliased draw) │      │  libusb out  │
- │ intel-rapl      → Watts │        └─────────────────────┘      └──────────────┘
- └────────────────────────┘
-        every refresh_rate seconds; a frame is sent only when data changed
-```
+1. [monitor/](monitor/) collects a `themes.CPUData` sample from Linux system interfaces.
+2. The selected plugin's `Screen` function turns that sample into drawing objects.
+3. [deep_cool/](deep_cool/) composites the objects into a 320 × 240 RGB565 frame.
+4. [system/](system/) sends the frame header and pixel data over USB through `gousb`.
 
-- **Sampling** — [monitor/](monitor/): CPU utilisation from `/proc/stat` deltas,
-  package temperature from `hwmon` (`k10temp`/`coretemp`), average core frequency
-  from `scaling_cur_freq`, and power from the Intel RAPL energy counter
-  (`/sys/class/powercap/intel-rapl:0/energy_uj`).
-- **Rendering** — the theme returns `FrameObject`s; each is a `func(x, y) FramePixel`
-  evaluated per pixel with painter's-algorithm compositing and alpha blending in
-  RGB888, packed back to RGB565.
-- **Transport** — [deep_cool/](deep_cool/): a frame header plus the pixel buffer are
-  written to the display's bulk OUT endpoint via `gousb`.
+[app/runner.go](app/runner.go) repeats this cycle every `refresh_rate` seconds.
+It skips rendering and transmission when the collected values match the last
+successfully displayed sample.
 
 ## Development
 
-```sh
-make            # build binary + all plugins
-make build      # binary only  → build/deepcoolgo
-make plugins    # plugins only → build/themes/*.so
-make dev        # build + stage themes into ~/.config/DCGO/Themes + seed config
-make clean
-go test ./...
-```
-
-Preview a theme without a cooler attached by rendering it to a PNG: drop the
-~40-line harness from [themes/CREATING_THEMES.md §9](themes/CREATING_THEMES.md) into
-`cmd/preview/main.go` and run
+Run commands from the project root:
 
 ```sh
-go run ./cmd/preview && xdg-open preview.png
+make            # Build the application and all plugins
+make build      # Build only build/deepcoolgo
+make plugins    # Build only build/themes/*.so
+make dev        # Build and install themes for the current user
+make test       # Run go test ./...
+go vet ./...    # Run static analysis
+make clean      # Remove build artifacts
 ```
 
-It reproduces the same compositing math the display uses (RGB565, identical draw
-order), so the image is pixel-accurate.
+The [theme creation guide](themes/CREATING_THEMES.md) includes a PNG preview
+example. To use it, create `cmd/preview/main.go` from the example and select
+an existing theme, such as `themes.AetherTheme{}`, instead of the guide's
+`NebulaTheme`. Then run `go run ./cmd/preview`. This lets you inspect the layout
+without a connected cooler; the build still requires the dependencies above.
 
-Project layout:
-
-| Path | Role |
+| Path | Purpose |
 |---|---|
-| [main.go](main.go) | composition root — wire everything together, handle signals |
-| [app/](app/) | `Runner` — the sample/render loop |
-| [config/](config/) | config struct, loading, defaults, validation |
-| [monitor/](monitor/) | metric collection (`Collector` + per-metric monitors) |
-| [deep_cool/](deep_cool/) | frame model, drawing primitives, USB transport |
-| [system/](system/) | libusb session wrapper |
-| [themes/](themes/) | theme interface, shared helpers, bundled theme logic |
-| [plugins/](plugins/) | thin `package main` wrappers compiled to `.so` |
-| [packaging/](packaging/) | systemd unit and default config templates |
+| [main.go](main.go) | Startup, dependency setup, and signal handling |
+| [app/](app/) | Metric collection and display update loop |
+| [config/](config/) | Configuration loading, defaults, and validation |
+| [monitor/](monitor/) | CPU metric collection |
+| [deep_cool/](deep_cool/) | Display detection, drawing primitives, and frame rendering |
+| [system/](system/) | USB connection and data transfer |
+| [themes/](themes/) | Theme interface, implementations, assets, and documentation |
+| [plugins/](plugins/) | Entry points compiled into `.so` plugins |
+| [packaging/](packaging/) | Service and configuration templates, RPM and nFPM packaging |
+| [debian/](debian/) | Debian packaging files |
 
 ## Troubleshooting
 
-| Symptom | Likely cause |
+| Symptom or log message | What to check |
 |---|---|
-| `USB device 3633:0026 ... not found` | Cooler not connected, wrong model, or missing permissions — run as root or add the `udev` rule above. |
-| `failed to read config` | Malformed `config.yml`; delete it to regenerate the default. |
-| `plugin was built with a different version of package ...` | Daemon and theme plugin are out of sync — `make clean && make`. |
-| Power always `0` | No Intel RAPL counter (AMD without `amd_energy`/`rapl`, or a VM). CPU/temp/clock still work. |
-| Frame never updates | Metrics not changing (idle); lower `refresh_rate` or load the CPU to verify. |
+| `compatible DeepCool displays not found` | Check the USB connection and device ID. Detection currently accepts `3633:0026` with a compatible interface. |
+| `open compatible DeepCool display` | Check USB permissions and whether another process is using the display. |
+| `load config` | Read the full error; check YAML syntax, file permissions, and `refresh_rate > 0`. The startup log reports the configuration path after a successful load. |
+| `read theme plugin` | Check `themes_path` and the plugin file. Run `make dev` for a local setup, or reinstall plugins for the service. |
+| `plugin was built with a different version of package ...` | Run `make clean && make` with consistent build settings, reinstall the application and plugins, and restart. |
+| `collect metrics` / `read power` | The RAPL counter is missing or unreadable. The entire screen update is skipped. |
+| `read cpu temperature` / `read cpu frequency` | Check the sensor and `cpufreq` sources listed under Requirements. These errors also prevent screen updates. |
+| Power is `0` on the first sample | The first energy reading establishes a baseline for later power measurements. |
+| The screen does not update | Wait one sampling interval and check the logs. Identical metric values do not trigger another frame. |
 
 ## Contributing
 
-Issues and pull requests are welcome. For a new theme, follow the checklist at the
-end of [themes/CREATING_THEMES.md](themes/CREATING_THEMES.md) and keep the daemon
-and plugins building with `make`.
+Issues and pull requests are welcome. Include your distribution, Go version,
+USB device ID, and relevant logs when reporting a problem. For a new theme,
+follow the [theme creation guide](themes/CREATING_THEMES.md).
+
+Before submitting code changes, format the Go files and run `go vet ./...`,
+`make test`, and `make`.
 
 ## License
 
-[MIT](LICENSE) © 2026 3x3cutable <avbazarov2006@mail.ru>
+[MIT](LICENSE) · Copyright © 2026 3x3cutable.
