@@ -1,0 +1,21 @@
+Source: deepcoolgo
+Section: utils
+Priority: optional
+Maintainer: DeepCoolGo contributors <noreply@example.com>
+Build-Depends: debhelper-compat (= 13),
+               golang-go (>= 2:1.26~),
+               gcc,
+               pkgconf,
+               libusb-1.0-0-dev
+Standards-Version: 4.6.2
+Homepage: https://example.com/deepcoolgo
+Rules-Requires-Root: no
+
+Package: deepcoolgo
+Architecture: linux-any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Live CPU telemetry on DeepCool LCD coolers
+ DeepCoolGo reads CPU load, temperature, clock speed and power draw from the
+ Linux kernel and renders a 320x240 frame to the LCD on a DeepCool cooler
+ over USB. Every visual is produced by a theme - a Go plugin (.so) - so the
+ display can be restyled without touching the daemon.

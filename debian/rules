@@ -1,0 +1,28 @@
+#!/usr/bin/make -f
+
+export CGO_ENABLED = 1
+export GOFLAGS = -trimpath -buildvcs=false
+# uncomment for offline builds after `go mod vendor`:
+# export GOFLAGS = -trimpath -buildvcs=false -mod=vendor
+
+DESTDIR = $(CURDIR)/debian/deepcoolgo
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	$(MAKE)
+
+override_dh_auto_test:
+	$(MAKE) test
+
+override_dh_auto_install:
+	$(MAKE) install DESTDIR=$(DESTDIR) \
+	    PREFIX=/usr BINDIR=/usr/bin LIBDIR=/usr/lib \
+	    SYSTEMDDIR=/usr/lib/systemd/system CONFDIR=/etc/deepcoolgo
+
+override_dh_installsystemd:
+	dh_installsystemd --no-enable --no-start
+
+override_dh_auto_clean:
+	$(MAKE) clean

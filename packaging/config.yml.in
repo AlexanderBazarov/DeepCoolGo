@@ -1,0 +1,12 @@
+# DeepCoolGo default configuration.
+# Installed to /etc/deepcoolgo/DCGO/config.yml (never overwritten by "make install").
+
+# Seconds between screen refreshes. Must be > 0.
+refresh_rate: 30
+
+# Theme plugin file name inside themes_path (built by "make plugins").
+# Available: aether.so custom.so lm360.so quietbeat.so stats.so
+theme: aether.so
+
+# Directory that holds the compiled theme plugins (*.so).
+themes_path: @THEMESDIR@

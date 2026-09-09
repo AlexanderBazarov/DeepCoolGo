@@ -1,0 +1,24 @@
+[Unit]
+Description=DeepCoolGo - render CPU stats on a DeepCool LCD cooler
+After=multi-user.target
+
+[Service]
+Type=simple
+# config is read from @CONFDIR@/DCGO/config.yml
+Environment=XDG_CONFIG_HOME=@CONFDIR@
+ExecStart=@BINDIR@/deepcoolgo
+Restart=on-failure
+RestartSec=5
+# the daemon handles SIGTERM and closes the USB device cleanly
+TimeoutStopSec=5
+
+# Hardening. Root is still required for raw USB access through libusb.
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=full
+ProtectControlGroups=true
+ProtectKernelTunables=true
+RestrictRealtime=true
+
+[Install]
+WantedBy=multi-user.target
