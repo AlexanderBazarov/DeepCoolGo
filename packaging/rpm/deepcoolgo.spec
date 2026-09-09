@@ -55,5 +55,5 @@ export CGO_ENABLED=1
 %config(noreplace) %{_sysconfdir}/deepcoolgo/DCGO/config.yml
 
 %changelog
-* Tue Sep 09 2026 DeepCoolGo contributors <noreply@example.com> - 0.1.0-1
+* Tue Sep 09 2026 3x3cutable <avbazarov2006@mail.ru> - 0.1.0-1
 - Initial package

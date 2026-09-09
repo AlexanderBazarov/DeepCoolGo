@@ -10,7 +10,6 @@ import (
 	deepcool "Lm360Go/deep_cool"
 )
 
-// TwilightSignalTheme renders theme 24: Twilight and a CPU-load signal.
 type TwilightSignalTheme struct{}
 
 var _ Theme = TwilightSignalTheme{}

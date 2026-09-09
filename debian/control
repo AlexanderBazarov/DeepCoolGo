@@ -1,7 +1,7 @@
 Source: deepcoolgo
 Section: utils
 Priority: optional
-Maintainer: DeepCoolGo contributors <noreply@example.com>
+Maintainer: 3x3cutable <avbazarov2006@mail.ru>
 Build-Depends: debhelper-compat (= 13),
                golang-go (>= 2:1.26~),
                gcc,

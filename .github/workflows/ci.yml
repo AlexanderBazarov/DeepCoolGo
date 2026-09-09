@@ -20,7 +20,6 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # CGO transport (gousb) needs the libusb-1.0 headers and pkg-config.
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -42,6 +41,5 @@ jobs:
       - name: Test
         run: go test ./...
 
-      # Also exercises -buildmode=plugin for every bundled theme.
       - name: Build binary and theme plugins
         run: make

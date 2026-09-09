@@ -250,4 +250,4 @@ and plugins building with `make`.
 
 ## License
 
-[MIT](LICENSE) © 2026 DeepCoolGo contributors
+[MIT](LICENSE) © 2026 3x3cutable <avbazarov2006@mail.ru>

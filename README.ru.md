@@ -250,4 +250,4 @@ Issue и pull request приветствуются. Для новой темы �
 
 ## Лицензия
 
-[MIT](LICENSE) © 2026, участники DeepCoolGo
+[MIT](LICENSE) © 2026, 3x3cutable <avbazarov2006@mail.ru>

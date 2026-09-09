@@ -12,7 +12,7 @@ version: ${VERSION}
 release: 1
 section: utils
 priority: optional
-maintainer: DeepCoolGo contributors <noreply@example.com>
+maintainer: 3x3cutable <avbazarov2006@mail.ru>
 homepage: https://example.com/deepcoolgo
 license: MIT
 description: |
