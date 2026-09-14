@@ -127,7 +127,7 @@ Example configuration for a service installed with `make install`:
 
 ```yaml
 # Sampling interval in seconds; fractional values such as 0.5 are supported.
-refresh_rate: 30
+refresh_rate: 2
 
 # Theme plugin file name within themes_path.
 theme: aether.so
@@ -138,7 +138,7 @@ themes_path: /usr/local/lib/deepcoolgo/themes
 
 | Key | Default in the application | Description |
 |---|---|---|
-| `refresh_rate` | `30` | Sampling interval in seconds; must be greater than zero. |
+| `refresh_rate` | `2` | Sampling interval in seconds; must be greater than zero. |
 | `theme` | `aether.so` | Plugin file name, resolved relative to `themes_path`. |
 | `themes_path` | `$HOME/.config/DCGO/Themes` | Plugin directory; the default is based on the process user's home directory. |
 
